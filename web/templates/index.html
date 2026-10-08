@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SchemaBreaker | Adversarial LLM Structured Output Stress-Tester</title>
+  
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              bg: '#080c14',
+              card: '#0f172a',
+              cardHover: '#131e36',
+              border: 'rgba(255, 255, 255, 0.08)',
+              cyan: '#38bdf8',
+              magenta: '#ec4899',
+              emerald: '#10b981',
+              amber: '#f59e0b',
+              rose: '#f43f5e',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons via CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      background-color: #080c14;
+      background-image: 
+        radial-gradient(circle at 10% 10%, rgba(56, 189, 248, 0.05) 0%, transparent 35%),
+        radial-gradient(circle at 90% 90%, rgba(236, 72, 153, 0.04) 0%, transparent 35%),
+        linear-gradient(to bottom, transparent 0%, rgba(8, 12, 20, 0.8) 100%);
+      color: #f1f5f9;
+      min-height: 100vh;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #080c14; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+    /* Code editor styling */
+    .code-editor {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      line-height: 1.55;
+      background: #090d16;
+      color: #e2e8f0;
+      tab-size: 4;
+    }
+
+    /* Glowing button pulse */
+    .btn-glow {
+      position: relative;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.35);
+    }
+    .btn-glow:hover {
+      box-shadow: 0 0 35px rgba(56, 189, 248, 0.6), 0 0 15px rgba(236, 72, 153, 0.4);
+      transform: translateY(-1px);
+    }
+
+    /* Glass card border gradient */
+    .glass-card {
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .glass-card-active {
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      box-shadow: 0 10px 30px -10px rgba(56, 189, 248, 0.15);
+    }
+  </style>
+</head>
+
+<body class="antialiased selection:bg-cyan-500 selection:text-black">
+  <!-- Top Navigation Bar -->
+  <header class="border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center space-x-3">
+        <div class="h-9 w-9 rounded-lg bg-gradient-to-tr from-cyan-500 via-indigo-500 to-pink-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+          <i data-lucide="zap" class="h-5 w-5 text-slate-950 fill-slate-950 font-bold"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">SchemaBreaker</span>
+            <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">v0.1.0</span>
+          </div>
+          <p class="text-[11px] text-slate-400 hidden sm:block">Adversarial Stress-Testing & Fuzzing for LLM Structured Outputs</p>
+        </div>
+      </div>
+
+      <!-- Header Actions -->
+      <div class="flex items-center space-x-3">
+        <!-- Preset Demo Selector -->
+        <div class="flex items-center space-x-2 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs">
+          <i data-lucide="sparkles" class="h-3.5 w-3.5 text-pink-400"></i>
+          <span class="text-slate-400">Preset:</span>
+          <select id="presetSelector" onchange="loadPreset(this.value)" class="bg-transparent text-slate-200 font-medium focus:outline-none cursor-pointer">
+            <option value="ecommerce">E-Commerce (CustomerOrder)</option>
+            <option value="clinical">Clinical Notes (ClinicalAssessment)</option>
+            <option value="financial">Loan Underwriting (LoanApplication)</option>
+            <option value="support">Support Ticket (SupportTicket)</option>
+          </select>
+        </div>
+
+        <!-- Mode Badge -->
+        <div id="modeBadge" class="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="modeText">Simulation Ready</span>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Main Content Layout -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- ========================================== -->
+      <!-- LEFT COLUMN: Schema Config & Controls (5 Cols) -->
+      <!-- ========================================== -->
+      <div class="lg:col-span-5 space-y-5">
+        
+        <!-- Target Schema Editor Card -->
+        <div class="glass-card rounded-xl p-4 shadow-xl">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="code-2" class="h-4 w-4 text-cyan-400"></i>
+              <h2 class="text-sm font-semibold tracking-wide text-slate-200">Target Schema Definition</h2>
+            </div>
+            
+            <div class="flex items-center space-x-2 text-xs">
+              <button onclick="setSchemaType('python')" id="typeBtnPy" class="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-[11px] font-medium border border-cyan-500/30">Pydantic</button>
+              <button onclick="setSchemaType('json')" id="typeBtnJson" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono text-[11px] hover:text-slate-200">JSON Schema</button>
+            </div>
+          </div>
+
+          <div class="mt-3 relative">
+            <textarea id="schemaCodeInput" class="w-full h-72 code-editor rounded-lg p-3.5 border border-slate-800 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none resize-y" spellcheck="false" placeholder="Paste Pydantic Python model or JSON Schema here..."></textarea>
+          </div>
+        </div>
+
+        <!-- Target System Prompt Card -->
+        <div class="glass-card rounded-xl p-4 shadow-xl">
+          <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="terminal" class="h-4 w-4 text-pink-400"></i>
+              <h2 class="text-sm font-semibold tracking-wide text-slate-200">Target System Prompt</h2>
+            </div>
+            <button onclick="resetPrompt()" class="text-[11px] text-slate-500 hover:text-slate-300 flex items-center space-x-1">
+              <i data-lucide="rotate-ccw" class="h-3 w-3"></i>
+              <span>Reset</span>
+            </button>
+          </div>
+          <div class="mt-3">
+            <textarea id="systemPromptInput" class="w-full h-24 code-editor rounded-lg p-3 border border-slate-800 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none text-xs" spellcheck="false" placeholder="System instructions given to the target LLM..."></textarea>
+          </div>
+        </div>
+
+        <!-- Attack Vectors & Execution Parameters Card -->
+        <div class="glass-card rounded-xl p-4 shadow-xl space-y-4">
+          <div class="flex items-center space-x-2 pb-2 border-b border-slate-800">
+            <i data-lucide="sliders" class="h-4 w-4 text-indigo-400"></i>
+            <h2 class="text-sm font-semibold tracking-wide text-slate-200">Fuzzing & Model Settings</h2>
+          </div>
+
+          <!-- Model & API Key Grid -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">Target Model</label>
+              <select id="targetModelSelect" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500/50">
+                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">Execution Mode</label>
+              <select id="executionModeSelect" onchange="toggleApiKeyField()" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500/50">
+                <option value="mock">⚡ High-Fidelity Mock (Free)</option>
+                <option value="live">🟢 Live Gemini API</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- API Key Input (Hidden by default unless live mode) -->
+          <div id="apiKeyContainer" class="hidden">
+            <label class="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">Gemini API Key</label>
+            <input type="password" id="apiKeyInput" placeholder="AIzaSy..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/50">
+          </div>
+
+          <!-- Sliders: Tests Count & Concurrency -->
+          <div class="grid grid-cols-2 gap-4 pt-1">
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-slate-400 font-medium">Fuzz Scenarios:</span>
+                <span id="numTestsVal" class="font-mono text-cyan-400 font-semibold">20</span>
+              </div>
+              <input type="range" id="numTestsSlider" min="5" max="50" value="20" step="5" oninput="document.getElementById('numTestsVal').innerText = this.value" class="w-full accent-cyan-400 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+            </div>
+
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-slate-400 font-medium">Concurrency:</span>
+                <span id="concurrencyVal" class="font-mono text-cyan-400 font-semibold">5 workers</span>
+              </div>
+              <input type="range" id="concurrencySlider" min="1" max="10" value="5" step="1" oninput="document.getElementById('concurrencyVal').innerText = this.value + ' workers'" class="w-full accent-cyan-400 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+            </div>
+          </div>
+
+          <!-- Attack Vectors Selector -->
+          <div class="pt-2">
+            <label class="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-2">Active Attack Vectors</label>
+            <div class="grid grid-cols-2 gap-1.5 text-xs">
+              <label class="flex items-center space-x-2 bg-slate-900/80 px-2 py-1.5 rounded border border-slate-800 cursor-pointer hover:border-slate-700">
+                <input type="checkbox" name="vector" value="prompt_injection" checked class="accent-cyan-400 rounded">
+                <span class="text-slate-300 text-[11px]">Prompt Injections</span>
+              </label>
+              <label class="flex items-center space-x-2 bg-slate-900/80 px-2 py-1.5 rounded border border-slate-800 cursor-pointer hover:border-slate-700">
+                <input type="checkbox" name="vector" value="enum_violation" checked class="accent-cyan-400 rounded">
+                <span class="text-slate-300 text-[11px]">Enum Violations</span>
+              </label>
+              <label class="flex items-center space-x-2 bg-slate-900/80 px-2 py-1.5 rounded border border-slate-800 cursor-pointer hover:border-slate-700">
+                <input type="checkbox" name="vector" value="type_confusion" checked class="accent-cyan-400 rounded">
+                <span class="text-slate-300 text-[11px]">Type Coercion Traps</span>
+              </label>
+              <label class="flex items-center space-x-2 bg-slate-900/80 px-2 py-1.5 rounded border border-slate-800 cursor-pointer hover:border-slate-700">
+                <input type="checkbox" name="vector" value="boundary_stress" checked class="accent-cyan-400 rounded">
+                <span class="text-slate-300 text-[11px]">Boundary & Range</span>
+              </label>
+              <label class="flex items-center space-x-2 bg-slate-900/80 px-2 py-1.5 rounded border border-slate-800 cursor-pointer hover:border-slate-700">
+                <input type="checkbox" name="vector" value="unicode_stress" checked class="accent-cyan-400 rounded">
+                <span class="text-slate-300 text-[11px]">Unicode & Zalgo</span>
+              </label>
+              <label class="flex items-center space-x-2 bg-slate-900/80 px-2 py-1.5 rounded border border-slate-800 cursor-pointer hover:border-slate-700">
+                <input type="checkbox" name="vector" value="null_injection" checked class="accent-cyan-400 rounded">
+                <span class="text-slate-300 text-[11px]">Null & Missing Keys</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Big Cyberpunk Action Button -->
+        <button id="breakButton" onclick="startAudit()" class="btn-glow w-full py-4 rounded-xl font-extrabold text-base tracking-wide bg-gradient-to-r from-cyan-500 via-indigo-600 to-pink-500 text-slate-950 flex items-center justify-center space-x-3 cursor-pointer">
+          <i data-lucide="zap" class="h-5 w-5 fill-slate-950 font-black"></i>
+          <span>⚡ BREAK MY SCHEMA</span>
+        </button>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- RIGHT COLUMN: Real-time Audit Results (7 Cols) -->
+      <!-- ========================================== -->
+      <div class="lg:col-span-7 space-y-5">
+        
+        <!-- Placeholder State (Before Run) -->
+        <div id="placeholderView" class="glass-card rounded-xl p-10 text-center border-dashed border-slate-800 space-y-4">
+          <div class="h-16 w-16 mx-auto rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shadow-inner">
+            <i data-lucide="shield-alert" class="h-8 w-8"></i>
+          </div>
+          <div class="max-w-md mx-auto">
+            <h3 class="text-base font-bold text-slate-200">Ready to Red-Team Your Schema</h3>
+            <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">
+              SchemaBreaker will synthesize malicious adversarial inputs, execute concurrent requests, and validate strict Pydantic contract compliance.
+            </p>
+          </div>
+          <div class="pt-2">
+            <button onclick="startAudit()" class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 inline-flex items-center space-x-2">
+              <i data-lucide="play" class="h-3.5 w-3.5 text-cyan-400"></i>
+              <span>Run Quick Demo Audit</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Progress Stream Bar (Visible during execution) -->
+        <div id="progressView" class="hidden glass-card rounded-xl p-5 border border-cyan-500/30 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <div class="h-3 w-3 rounded-full bg-cyan-400 animate-ping"></div>
+              <span id="progressPhaseText" class="text-xs font-mono text-cyan-300 font-semibold">Running Red Team Suite...</span>
+            </div>
+            <span id="progressCounter" class="text-xs font-mono text-slate-400">0 / 20</span>
+          </div>
+
+          <!-- Progress Bar -->
+          <div class="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+            <div id="progressBarFill" class="bg-gradient-to-r from-cyan-400 to-pink-500 h-full w-0 transition-all duration-300"></div>
+          </div>
+
+          <!-- Live Stream Chips Container -->
+          <div id="liveChips" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+            <!-- Badges appended live -->
+          </div>
+        </div>
+
+        <!-- Audit Dashboard Results (Populated on Complete) -->
+        <div id="resultsView" class="hidden space-y-5">
+          
+          <!-- Top KPI Banner -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            
+            <!-- Health Score Card -->
+            <div class="glass-card rounded-xl p-3.5 border-l-4 border-l-emerald-500" id="healthScoreCard">
+              <div class="text-[10px] uppercase tracking-wider font-semibold text-slate-400">Health Score</div>
+              <div class="flex items-baseline space-x-1.5 mt-1">
+                <span id="kpiScore" class="text-2xl font-extrabold text-emerald-400 font-mono">92.5</span>
+                <span class="text-xs text-slate-500">/ 100</span>
+              </div>
+              <div id="kpiGrade" class="text-[11px] font-bold text-emerald-400 mt-0.5">GRADE A+</div>
+            </div>
+
+            <!-- Pass Rate Card -->
+            <div class="glass-card rounded-xl p-3.5 border-l-4 border-l-cyan-500">
+              <div class="text-[10px] uppercase tracking-wider font-semibold text-slate-400">Pass Rate</div>
+              <div class="flex items-baseline space-x-1.5 mt-1">
+                <span id="kpiPassRate" class="text-2xl font-extrabold text-cyan-400 font-mono">90.0%</span>
+              </div>
+              <div id="kpiPassRatio" class="text-[11px] text-slate-400 mt-0.5">18 / 20 Passed</div>
+            </div>
+
+            <!-- Breaking Edge Cases Card -->
+            <div class="glass-card rounded-xl p-3.5 border-l-4 border-l-rose-500">
+              <div class="text-[10px] uppercase tracking-wider font-semibold text-slate-400">Breaking Cases</div>
+              <div class="flex items-baseline space-x-1.5 mt-1">
+                <span id="kpiFailures" class="text-2xl font-extrabold text-rose-400 font-mono">2</span>
+              </div>
+              <div class="text-[11px] text-rose-400 mt-0.5">Vulnerabilities Found</div>
+            </div>
+
+            <!-- Latency Card -->
+            <div class="glass-card rounded-xl p-3.5 border-l-4 border-l-indigo-500">
+              <div class="text-[10px] uppercase tracking-wider font-semibold text-slate-400">Avg Latency</div>
+              <div class="flex items-baseline space-x-1.5 mt-1">
+                <span id="kpiLatency" class="text-2xl font-extrabold text-indigo-400 font-mono">380ms</span>
+              </div>
+              <div id="kpiP95" class="text-[11px] text-slate-400 mt-0.5">P95: 620ms</div>
+            </div>
+
+          </div>
+
+          <!-- Attack Vector Breakdown Grid -->
+          <div class="glass-card rounded-xl p-4 shadow-xl">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center space-x-2">
+              <i data-lucide="shield-check" class="h-3.5 w-3.5 text-cyan-400"></i>
+              <span>Attack Vector Resilience</span>
+            </h3>
+            <div id="vectorBreakdownGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <!-- Dynamically rendered -->
+            </div>
+          </div>
+
+          <!-- Interactive Tabs: [Breaking Edge Cases] & [Automated Fixes & Patches] -->
+          <div class="glass-card rounded-xl p-4 shadow-xl space-y-4">
+            
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div class="flex space-x-2">
+                <button id="tabBtnFailures" onclick="switchTab('failures')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center space-x-2">
+                  <i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i>
+                  <span>Breaking Cases (<span id="tabFailureCount">0</span>)</span>
+                </button>
+                <button id="tabBtnPatches" onclick="switchTab('patches')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+                  <i data-lucide="wrench" class="h-3.5 w-3.5"></i>
+                  <span>Automated Fixes (<span id="tabPatchCount">0</span>)</span>
+                </button>
+                <button id="tabBtnAll" onclick="switchTab('all')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+                  <i data-lucide="list" class="h-3.5 w-3.5"></i>
+                  <span>All Executions</span>
+                </button>
+              </div>
+
+              <!-- Export Buttons -->
+              <div class="flex items-center space-x-2">
+                <button onclick="downloadJsonReport()" title="Download JSON Telemetry" class="p-1.5 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-cyan-400">
+                  <i data-lucide="download" class="h-3.5 w-3.5"></i>
+                </button>
+                <button onclick="downloadHtmlReport()" title="Download Standalone HTML Dashboard" class="p-1.5 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-pink-400">
+                  <i data-lucide="file-code" class="h-3.5 w-3.5"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Tab 1 Content: Breaking Failures Accordion -->
+            <div id="tabContentFailures" class="space-y-3">
+              <!-- Dynamically populated -->
+            </div>
+
+            <!-- Tab 2 Content: Automated Fixes & Patches -->
+            <div id="tabContentPatches" class="hidden space-y-3">
+              <!-- Dynamically populated -->
+            </div>
+
+            <!-- Tab 3 Content: All Runs -->
+            <div id="tabContentAll" class="hidden space-y-2 max-h-[500px] overflow-y-auto">
+              <!-- Dynamically populated -->
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- JavaScript Application Logic -->
+  <script>
+    // Global State
+    let currentSchemaType = 'python';
+    let currentAuditSummary = null;
+    let eventSource = null;
+
+    // Built-in Demo Presets
+    const PRESETS = {
+      ecommerce: {
+        type: 'python',
+        prompt: `You are an e-commerce order ingestion assistant.
+Your task is to parse raw natural language order messages, customer emails, or API payloads into a strictly valid CustomerOrder JSON object.
+Ensure SKU codes, order IDs, tax rates, and prices adhere strictly to the schema constraints.`,
+        code: `from enum import Enum
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+class OrderStatus(str, Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    SHIPPED = "SHIPPED"
+    DELIVERED = "DELIVERED"
+    CANCELLED = "CANCELLED"
+    REFUNDED = "REFUNDED"
+
+class CurrencyCode(str, Enum):
+    USD = "USD"
+    EUR = "EUR"
+    GBP = "GBP"
+    CAD = "CAD"
+    JPY = "JPY"
+
+class Address(BaseModel):
+    street: str = Field(..., min_length=3)
+    city: str = Field(..., min_length=2)
+    state_province: str = Field(...)
+    postal_code: str = Field(..., min_length=3, max_length=12)
+    country_iso: str = Field(..., min_length=2, max_length=3)
+
+class OrderItem(BaseModel):
+    sku: str = Field(..., pattern=r"^[A-Z0-9]{3,4}-[A-Z0-9]{3,4}-[A-Z0-9]{2,4}$")
+    product_name: str = Field(..., min_length=1)
+    quantity: int = Field(..., gt=0, le=1000)
+    unit_price: float = Field(..., ge=0.0)
+
+class CustomerOrder(BaseModel):
+    order_id: str = Field(..., pattern=r"^ORD-[0-9]{8}$")
+    customer_email: str = Field(..., pattern=r"^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
+    status: OrderStatus = Field(default=OrderStatus.PENDING)
+    currency: CurrencyCode = Field(default=CurrencyCode.USD)
+    items: List[OrderItem] = Field(..., min_length=1)
+    shipping_address: Address = Field(...)
+    subtotal: float = Field(..., ge=0.0)
+    tax_rate: float = Field(..., ge=0.0, le=0.40)
+    total_amount: float = Field(..., ge=0.0)`
+      },
+      clinical: {
+        type: 'python',
+        prompt: `You are an emergency department clinical assistant. Extract a ClinicalAssessment JSON entity adhering strictly to all medical constraints and ICD-10 formatting.`,
+        code: `from enum import Enum
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+class TriageLevel(str, Enum):
+    RESUSCITATION = "RESUSCITATION"
+    EMERGENT = "EMERGENT"
+    URGENT = "URGENT"
+    NON_URGENT = "NON_URGENT"
+
+class VitalSigns(BaseModel):
+    heart_rate_bpm: int = Field(..., ge=20, le=260)
+    blood_pressure_systolic: int = Field(..., ge=40, le=300)
+    blood_pressure_diastolic: int = Field(..., ge=20, le=200)
+    temperature_celsius: float = Field(..., ge=30.0, le=45.0)
+    oxygen_saturation_pct: int = Field(..., ge=50, le=100)
+
+class ClinicalAssessment(BaseModel):
+    patient_id: str = Field(..., pattern=r"^PAT-[0-9]{6}$")
+    chief_complaint: str = Field(..., min_length=5)
+    triage_level: TriageLevel = Field(...)
+    vitals: VitalSigns = Field(...)
+    allergies: List[str] = Field(default_factory=list)
+    icd10_suspected_codes: List[str] = Field(..., min_length=1)
+    requires_immediate_admission: bool = Field(default=False)`
+      },
+      financial: {
+        type: 'python',
+        prompt: `You are a credit underwriting risk assistant. Extract loan application data and verify strict numbers.`,
+        code: `from enum import Enum
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+class RiskTier(str, Enum):
+    TIER_1_PRIME = "TIER_1_PRIME"
+    TIER_2_NEAR_PRIME = "TIER_2_NEAR_PRIME"
+    TIER_3_SUBPRIME = "TIER_3_SUBPRIME"
+    TIER_4_DECLINED = "TIER_4_DECLINED"
+
+class LoanApplication(BaseModel):
+    application_id: str = Field(..., pattern=r"^APP-[0-9]{7}$")
+    applicant_name: str = Field(..., min_length=2)
+    credit_score: int = Field(..., ge=300, le=850)
+    monthly_gross_income: float = Field(..., ge=0.0)
+    monthly_debt_obligations: float = Field(..., ge=0.0)
+    calculated_dti_ratio: float = Field(..., ge=0.0, le=1.5)
+    assigned_risk_tier: RiskTier = Field(...)
+    auto_approval_granted: bool = Field(default=False)`
+      },
+      support: {
+        type: 'python',
+        prompt: `Extract customer support ticket metrics.`,
+        code: `from enum import Enum
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+class Priority(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+class SupportTicket(BaseModel):
+    ticket_id: str = Field(..., pattern=r"^TCK-[0-9]{5}$")
+    customer_email: str = Field(..., pattern=r"^[^@]+@[^@]+\\.[^@]+$")
+    issue_summary: str = Field(..., min_length=10, max_length=200)
+    priority: Priority = Field(default=Priority.MEDIUM)
+    tags: List[str] = Field(default_factory=list, min_length=1)
+    estimated_resolution_hours: float = Field(..., ge=0.5, le=72.0)
+    requires_escalation: bool = Field(default=False)`
+      }
+    };
+
+    // Initialize with default preset
+    window.addEventListener('DOMContentLoaded', () => {
+      loadPreset('ecommerce');
+      lucide.createIcons();
+    });
+
+    function loadPreset(key) {
+      if (PRESETS[key]) {
+        document.getElementById('schemaCodeInput').value = PRESETS[key].code;
+        document.getElementById('systemPromptInput').value = PRESETS[key].prompt;
+        setSchemaType(PRESETS[key].type);
+      }
+    }
+
+    function resetPrompt() {
+      const presetKey = document.getElementById('presetSelector').value;
+      if (PRESETS[presetKey]) {
+        document.getElementById('systemPromptInput').value = PRESETS[presetKey].prompt;
+      }
+    }
+
+    function setSchemaType(type) {
+      currentSchemaType = type;
+      if (type === 'python') {
+        document.getElementById('typeBtnPy').className = "px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-[11px] font-medium border border-cyan-500/30";
+        document.getElementById('typeBtnJson').className = "px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono text-[11px] hover:text-slate-200";
+      } else {
+        document.getElementById('typeBtnJson').className = "px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-[11px] font-medium border border-cyan-500/30";
+        document.getElementById('typeBtnPy').className = "px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono text-[11px] hover:text-slate-200";
+      }
+    }
+
+    function toggleApiKeyField() {
+      const mode = document.getElementById('executionModeSelect').value;
+      const apiKeyCont = document.getElementById('apiKeyContainer');
+      const modeBadge = document.getElementById('modeText');
+      if (mode === 'live') {
+        apiKeyCont.classList.remove('hidden');
+        modeBadge.innerText = 'Live Gemini API';
+      } else {
+        apiKeyCont.classList.add('hidden');
+        modeBadge.innerText = 'Simulation Ready';
+      }
+    }
+
+    // Main Audit Trigger via SSE Stream
+    async function startAudit() {
+      const schemaCode = document.getElementById('schemaCodeInput').value.trim();
+      const systemPrompt = document.getElementById('systemPromptInput').value.trim();
+      const targetModel = document.getElementById('targetModelSelect').value;
+      const executionMode = document.getElementById('executionModeSelect').value;
+      const apiKey = document.getElementById('apiKeyInput').value.trim();
+      const numTests = parseInt(document.getElementById('numTestsSlider').value, 10);
+      const concurrency = parseInt(document.getElementById('concurrencySlider').value, 10);
+
+      // Selected vectors
+      const checkedVectors = Array.from(document.querySelectorAll('input[name="vector"]:checked')).map(cb => cb.value);
+
+      if (!schemaCode) {
+        alert('Please provide a target Pydantic or JSON schema.');
+        return;
+      }
+
+      // UI state transition
+      document.getElementById('placeholderView').classList.add('hidden');
+      document.getElementById('resultsView').classList.add('hidden');
+      document.getElementById('progressView').classList.remove('hidden');
+
+      const breakBtn = document.getElementById('breakButton');
+      breakBtn.disabled = true;
+      breakBtn.innerHTML = `<i data-lucide="loader-2" class="h-5 w-5 animate-spin"></i><span>Fuzzing In Progress...</span>`;
+      lucide.createIcons();
+
+      const liveChips = document.getElementById('liveChips');
+      liveChips.innerHTML = '';
+      document.getElementById('progressBarFill').style.width = '0%';
+      document.getElementById('progressCounter').innerText = `0 / ${numTests}`;
+      document.getElementById('progressPhaseText').innerText = 'Synthesizing adversarial red-team payloads...';
+
+      const payload = {
+        schema_code: schemaCode,
+        schema_type: currentSchemaType,
+        system_prompt: systemPrompt,
+        target_model: targetModel,
+        generator_model: targetModel,
+        num_tests: numTests,
+        concurrency: concurrency,
+        mock_mode: executionMode === 'mock',
+        api_key: apiKey || null,
+        attack_vectors: checkedVectors.length ? checkedVectors : null
+      };
+
+      try {
+        const response = await fetch('/api/audit/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.detail || 'Audit request failed');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop(); // Keep last partial line
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const eventData = JSON.parse(line.substring(6));
+              handleStreamEvent(eventData);
+            }
+          }
+        }
+
+      } catch (err) {
+        alert(`Audit Error: ${err.message}`);
+        document.getElementById('progressView').classList.add('hidden');
+        document.getElementById('placeholderView').classList.remove('hidden');
+      } finally {
+        breakBtn.disabled = false;
+        breakBtn.innerHTML = `<i data-lucide="zap" class="h-5 w-5 fill-slate-950 font-black"></i><span>⚡ BREAK MY SCHEMA</span>`;
+        lucide.createIcons();
+      }
+    }
+
+    function handleStreamEvent(data) {
+      if (data.event === 'phase') {
+        document.getElementById('progressPhaseText').innerText = data.message;
+      } 
+      else if (data.event === 'test_result') {
+        const pct = Math.round((data.completed / data.total) * 100);
+        document.getElementById('progressBarFill').style.width = `${pct}%`;
+        document.getElementById('progressCounter').innerText = `${data.completed} / ${data.total}`;
+
+        const res = data.result;
+        const chip = document.createElement('span');
+        chip.className = `text-[10px] font-mono px-2 py-0.5 rounded border ${
+          res.success 
+            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+            : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+        }`;
+        chip.innerText = `${res.test_case.id} ${res.status_code}`;
+        document.getElementById('liveChips').appendChild(chip);
+      }
+      else if (data.event === 'completed') {
+        currentAuditSummary = data.summary;
+        renderSummaryDashboard(data.summary);
+      }
+      else if (data.event === 'error') {
+        alert(data.message);
+      }
+    }
+
+    function renderSummaryDashboard(summary) {
+      document.getElementById('progressView').classList.add('hidden');
+      document.getElementById('resultsView').classList.remove('hidden');
+
+      // Top KPI Cards
+      document.getElementById('kpiScore').innerText = summary.health_score.toFixed(1);
+      document.getElementById('kpiGrade').innerText = `GRADE ${summary.health_grade}`;
+      
+      const scoreCard = document.getElementById('healthScoreCard');
+      if (summary.health_score >= 90) {
+        scoreCard.className = "glass-card rounded-xl p-3.5 border-l-4 border-l-emerald-500";
+        document.getElementById('kpiScore').className = "text-2xl font-extrabold text-emerald-400 font-mono";
+        document.getElementById('kpiGrade').className = "text-[11px] font-bold text-emerald-400 mt-0.5";
+      } else if (summary.health_score >= 75) {
+        scoreCard.className = "glass-card rounded-xl p-3.5 border-l-4 border-l-amber-500";
+        document.getElementById('kpiScore').className = "text-2xl font-extrabold text-amber-400 font-mono";
+        document.getElementById('kpiGrade').className = "text-[11px] font-bold text-amber-400 mt-0.5";
+      } else {
+        scoreCard.className = "glass-card rounded-xl p-3.5 border-l-4 border-l-rose-500";
+        document.getElementById('kpiScore').className = "text-2xl font-extrabold text-rose-400 font-mono";
+        document.getElementById('kpiGrade').className = "text-[11px] font-bold text-rose-400 mt-0.5";
+      }
+
+      document.getElementById('kpiPassRate').innerText = `${summary.success_rate.toFixed(1)}%`;
+      document.getElementById('kpiPassRatio').innerText = `${summary.passed_tests} / ${summary.total_tests} Passed`;
+      
+      const totalFailures = summary.failed_tests + summary.error_tests;
+      document.getElementById('kpiFailures').innerText = totalFailures;
+      document.getElementById('tabFailureCount').innerText = totalFailures;
+      document.getElementById('tabPatchCount').innerText = summary.recommendations ? summary.recommendations.length : 0;
+
+      document.getElementById('kpiLatency').innerText = `${Math.round(summary.avg_latency_ms)}ms`;
+      document.getElementById('kpiP95').innerText = `P50: ${Math.round(summary.p50_latency_ms)}ms | P95: ${Math.round(summary.p95_latency_ms)}ms`;
+
+      // Render Attack Vector Resilience Grid
+      const vecGrid = document.getElementById('vectorBreakdownGrid');
+      vecGrid.innerHTML = '';
+      for (const [key, stats] of Object.entries(summary.results_by_vector)) {
+        const rate = stats.success_rate;
+        const rateColor = rate >= 90 ? 'text-emerald-400' : (rate >= 70 ? 'text-amber-400' : 'text-rose-400');
+        const barColor = rate >= 90 ? 'bg-emerald-400' : (rate >= 70 ? 'bg-amber-400' : 'bg-rose-400');
+
+        vecGrid.innerHTML += `
+          <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+            <div class="flex justify-between items-center text-xs mb-1.5">
+              <span class="font-medium text-slate-300">${stats.display_name}</span>
+              <span class="font-mono font-bold ${rateColor}">${rate.toFixed(1)}%</span>
+            </div>
+            <div class="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+              <div class="${barColor} h-full" style="width: ${rate}%"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+              <span>${stats.passed}/${stats.total} passed</span>
+              <span>avg ${Math.round(stats.avg_latency_ms)}ms</span>
+            </div>
+          </div>
+        `;
+      }
+
+      // Render Breaking Failures Accordion
+      const failureCont = document.getElementById('tabContentFailures');
+      failureCont.innerHTML = '';
+      const failedResults = summary.results.filter(r => !r.success);
+
+      if (failedResults.length === 0) {
+        failureCont.innerHTML = `
+          <div class="text-center py-8 text-emerald-400">
+            <i data-lucide="check-circle-2" class="h-8 w-8 mx-auto mb-2"></i>
+            <div class="font-bold text-sm">Zero Failures Detected!</div>
+            <div class="text-xs text-slate-400 mt-1">All adversarial test vectors passed schema validation.</div>
+          </div>
+        `;
+      } else {
+        failedResults.forEach((res, idx) => {
+          const tc = res.test_case;
+          let diffHtml = '';
+          if (res.validation_errors && res.validation_errors.length) {
+            diffHtml = `
+              <div class="mt-2 text-xs bg-rose-950/20 border border-rose-900/30 rounded p-2 text-rose-300 font-mono space-y-1">
+                <div class="font-bold text-[11px] text-rose-400">Pydantic Validation Trace:</div>
+                ${res.validation_errors.map(e => `<div>&bull; <span class="text-white font-semibold">${e.loc.join('.')}</span>: ${e.msg} <span class="text-slate-500">(${e.error_type})</span></div>`).join('')}
+              </div>
+            `;
+          }
+
+          failureCont.innerHTML += `
+            <div class="border border-rose-500/20 bg-slate-900/80 rounded-xl p-3.5 space-y-2.5">
+              <div class="flex justify-between items-start">
+                <div class="space-y-0.5">
+                  <div class="flex items-center space-x-2">
+                    <span class="text-xs font-mono font-bold text-rose-400">${tc.id}</span>
+                    <span class="text-xs font-semibold text-slate-200">${escapeHtml(tc.title)}</span>
+                  </div>
+                  <div class="text-[11px] text-slate-400">${escapeHtml(tc.description)}</div>
+                </div>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-pink-500/10 text-pink-400 border border-pink-500/20 font-semibold">${tc.vector}</span>
+              </div>
+
+              <!-- Malicious Input -->
+              <div>
+                <div class="text-[10px] uppercase font-semibold text-cyan-400 mb-1">Adversarial Input Payload:</div>
+                <div class="relative">
+                  <pre class="code-editor text-[11px] p-2.5 rounded-lg border border-slate-800 overflow-x-auto text-slate-300 max-h-24">${escapeHtml(tc.input_prompt)}</pre>
+                  <button onclick="copyToClipboard('${escapeJs(tc.input_prompt)}')" class="absolute top-2 right-2 text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-slate-200">Copy</button>
+                </div>
+              </div>
+
+              <!-- Raw LLM Output -->
+              <div>
+                <div class="text-[10px] uppercase font-semibold text-rose-400 mb-1">Raw LLM Output (Malformed):</div>
+                <pre class="code-editor text-[11px] p-2.5 rounded-lg border border-slate-800 overflow-x-auto text-rose-300 max-h-24">${escapeHtml(res.raw_output || '<No output returned>')}</pre>
+              </div>
+
+              ${diffHtml}
+            </div>
+          `;
+        });
+      }
+
+      // Render Automated Patches
+      const patchCont = document.getElementById('tabContentPatches');
+      patchCont.innerHTML = '';
+      if (!summary.recommendations || summary.recommendations.length === 0) {
+        patchCont.innerHTML = `<div class="text-xs text-slate-400 py-4 text-center">No patches required. Schema health is optimal.</div>`;
+      } else {
+        summary.recommendations.forEach(rec => {
+          let codeBlocks = '';
+          if (rec.code_patch_pydantic) {
+            codeBlocks += `
+              <div class="mt-2">
+                <div class="flex justify-between text-[11px] text-pink-400 font-semibold mb-1">
+                  <span>Pydantic v2 Hardening Patch:</span>
+                  <button onclick="copyToClipboard('${escapeJs(rec.code_patch_pydantic)}')" class="text-[10px] text-slate-400 hover:text-slate-200">Copy Code</button>
+                </div>
+                <pre class="code-editor text-[11px] p-2.5 rounded-lg border border-slate-800 overflow-x-auto text-slate-300">${escapeHtml(rec.code_patch_pydantic)}</pre>
+              </div>
+            `;
+          }
+          if (rec.prompt_patch) {
+            codeBlocks += `
+              <div class="mt-2">
+                <div class="flex justify-between text-[11px] text-cyan-400 font-semibold mb-1">
+                  <span>System Prompt Patch:</span>
+                  <button onclick="copyToClipboard('${escapeJs(rec.prompt_patch)}')" class="text-[10px] text-slate-400 hover:text-slate-200">Copy Prompt</button>
+                </div>
+                <pre class="code-editor text-[11px] p-2.5 rounded-lg border border-slate-800 overflow-x-auto text-slate-300">${escapeHtml(rec.prompt_patch)}</pre>
+              </div>
+            `;
+          }
+
+          patchCont.innerHTML += `
+            <div class="border border-slate-800 bg-slate-900/90 rounded-xl p-3.5 space-y-2">
+              <div class="flex items-center space-x-2">
+                <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
+                  rec.severity === 'CRITICAL' ? 'bg-rose-500/20 text-rose-400' : 'bg-amber-500/20 text-amber-400'
+                }">${rec.severity}</span>
+                <span class="text-xs font-bold text-slate-200">${escapeHtml(rec.title)}</span>
+              </div>
+              <p class="text-xs text-slate-400">${escapeHtml(rec.problem_statement)}</p>
+              <p class="text-xs text-slate-300"><span class="font-semibold text-cyan-400">Fix:</span> ${escapeHtml(rec.suggested_action)}</p>
+              ${codeBlocks}
+            </div>
+          `;
+        });
+      }
+
+      // Render All Runs Tab
+      const allCont = document.getElementById('tabContentAll');
+      allCont.innerHTML = '';
+      summary.results.forEach(res => {
+        allCont.innerHTML += `
+          <div class="flex justify-between items-center text-xs p-2 rounded bg-slate-900/60 border border-slate-800/80">
+            <div class="flex items-center space-x-2">
+              <span class="font-mono text-[11px] ${res.success ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}">${res.status_code}</span>
+              <span class="font-mono text-slate-500">${res.test_case.id}</span>
+              <span class="text-slate-300">${escapeHtml(res.test_case.title)}</span>
+            </div>
+            <span class="font-mono text-slate-500 text-[11px]">${Math.round(res.latency_ms)}ms</span>
+          </div>
+        `;
+      });
+
+      lucide.createIcons();
+    }
+
+    function switchTab(tab) {
+      document.getElementById('tabBtnFailures').className = tab === 'failures' ? "px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center space-x-2" : "px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 flex items-center space-x-2";
+      document.getElementById('tabBtnPatches').className = tab === 'patches' ? "px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center space-x-2" : "px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 flex items-center space-x-2";
+      document.getElementById('tabBtnAll').className = tab === 'all' ? "px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center space-x-2" : "px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 flex items-center space-x-2";
+
+      document.getElementById('tabContentFailures').classList.toggle('hidden', tab !== 'failures');
+      document.getElementById('tabContentPatches').classList.toggle('hidden', tab !== 'patches');
+      document.getElementById('tabContentAll').classList.toggle('hidden', tab !== 'all');
+    }
+
+    async function downloadHtmlReport() {
+      if (!currentAuditSummary) return;
+      const res = await fetch('/api/export/html', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentAuditSummary)
+      });
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `schemabreaker_${currentAuditSummary.schema_name}.html`;
+      a.click();
+    }
+
+    function downloadJsonReport() {
+      if (!currentAuditSummary) return;
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentAuditSummary, null, 2));
+      const a = document.createElement('a');
+      a.href = dataStr;
+      a.download = `schemabreaker_${currentAuditSummary.schema_name}.json`;
+      a.click();
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text);
+      alert('Copied to clipboard!');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    function escapeJs(str) {
+      if (!str) return '';
+      return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '');
+    }
+  </script>
+</body>
+</html>

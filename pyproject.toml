@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "schemabreaker"
+version = "0.1.0"
+description = "Automated stress-testing CLI and micro-app that fuzz-tests LLM Structured Outputs using adversarial edge cases"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "SchemaBreaker Team" }
+]
+dependencies = [
+    "pydantic>=2.7.0",
+    "google-genai>=2.0.0",
+    "rich>=13.7.0",
+    "click>=8.1.0",
+    "httpx>=0.27.0",
+    "jinja2>=3.1.0",
+]
+
+[project.optional-dependencies]
+web = [
+    "streamlit>=1.35.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.30.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[project.scripts]
+schemabreaker = "schemabreaker.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["schemabreaker*"]
